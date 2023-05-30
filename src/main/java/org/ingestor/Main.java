@@ -5,6 +5,9 @@ import com.couchbase.client.java.query.QueryResult;
 import org.apache.commons.cli.*;
 import org.apache.commons.lang3.RandomStringUtils;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
+
+import java.util.UUID;
 
 public class Main {
 
@@ -22,7 +25,7 @@ public class Main {
         String prefix = "";
         boolean shuffle = false;
         long start_seq = 0L;
-        int buffer = 1000;
+        int buffer = 100;
         long docs = 0L;
         long contentLimit = 0L;
         int shuffleLen = 3;
@@ -149,37 +152,99 @@ public class Main {
             String finalPrefix = prefix;
             long finalStart_seq = start_seq;
 
-            Flux.generate(() -> 0L, (i, sink) ->
-                    {
-                        sink.next(i);
-                        if (finalDocs != 0 && i > finalDocs) {
-                            sink.complete();
-                        }
-                        return i + 1;
+
+            int finalBuffer = buffer;
+//            Flux.range(0, 8)
+//                    .parallel()
+//                    .runOn(Schedulers.newBoundedElastic(16, 32, "marco"))
+//                    .flatMap(i -> Flux.generate(() -> 0L, (j, sink) ->
+//                                    {
+//                                        sink.next(j);
+//                                        if (j > 100000000 / 2) {
+////                                        if (finalDocs != 0 && j > 100 / 2) {
+//                                            sink.complete();
+//                                        }
+//                                        return j + 1;
+//                                    })
+//                                    .buffer(finalBuffer)
+//                                    .parallel()
+//                                    .map(countList -> {
+//                                                if (finalContentLimit > 0) {
+//                                                    QueryResult result = cluster.query(query);
+//                                                    if (Long.parseLong(result.rowsAsObject().get(0).get("count").toString()) >= finalContentLimit) {
+//                                                        System.exit(0);
+//                                                    }
+//                                                }
+//                                                System.out.println(Thread.currentThread().getName());
+//                                                return Flux.fromIterable(countList)
+//                                                        .parallel()
+//                                                        .flatMap(count -> collection.upsert(
+//                                                                        finalPrefix + count,
+//                                                                        docGenerator.generateDoc(finalPrefix, finalStart_seq + (long) count)
+//                                                                )
+//                                                        ).sequential()
+//                                                        .collectList()
+//                                                        .block();
+//                                            }
+//                                    ).then()
+//
+//                    )
+//                    .sequential()
+//                    .collectList()
+//                    .block();
+
+
+//            Flux.generate(() -> 0L, (i, sink) ->
+//            {
+//                sink.next(i);
+//                if (finalDocs != 0 && i > finalDocs) {
+//                    sink.complete();
+//                }
+//                return i + 1;
+//            })
+//            .buffer(buffer)
+//            .map(countList -> {
+//                        if (finalContentLimit > 0) {
+//                            QueryResult result = cluster.query(query);
+//                            if (Long.parseLong(result.rowsAsObject().get(0).get("count").toString()) >= finalContentLimit) {
+//                                System.exit(0);
+//                            }
+//                        }
+//                        return Flux.fromIterable(countList)
+//                                .parallel()
+//                                //.runOn(Schedulers.newParallel(UUID.randomUUID().toString(), 16))
+//                                .flatMap(count ->
+//                                        collection.upsert(
+//                                                finalPrefix + count,
+//                                                docGenerator.generateDoc(finalPrefix, finalStart_seq + (long) count))
+//                                )
+//                                .sequential()
+//                                .collectList()
+//                                .block();
+//                    }
+//            )
+//            .collectList()
+//            .block();
+//        }
+
+
+            Flux.range(0, 2)
+                    .parallel()
+                    // .runOn(Schedulers.newParallel("asmaa-parallel", 12))
+                    .runOn(Schedulers.newParallel("asmaa-parallel", 8))
+                    .flatMap(i -> Flux.range(0, 1000000)
+                            .flatMap(j -> Flux.just(j)
+                                    .flatMap(h -> collection.upsert(
+                                                    finalPrefix + h,
+                                                    docGenerator.generateDoc(finalPrefix, finalStart_seq + (long) h)
+                                            )
+                                    ))
+                    ).doOnNext(result -> {
+
                     })
-                    .buffer(buffer)
-                    .map(countList -> {
-                                if (finalContentLimit > 0) {
-                                    QueryResult result = cluster.query(query);
-                                    if (Long.parseLong(result.rowsAsObject().get(0).get("count").toString()) >= finalContentLimit) {
-                                        System.exit(0);
-                                    }
-                                }
-                                return Flux.fromIterable(countList)
-                                        .parallel()
-                                        .flatMap(count ->
-                                                collection.upsert(
-                                                        finalPrefix + count,
-                                                        docGenerator.generateDoc(finalPrefix, finalStart_seq + (long) count))
-                                        )
-                                        .sequential()
-                                        .collectList()
-                                        .block();
-                            }
-                    )
-                    .collectList()
-                    .block();
+                    .sequential()
+                    .blockLast();
+
         }
     }
-
 }
